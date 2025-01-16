@@ -1,0 +1,5 @@
+﻿Expected Process:
+	Query user for XML file (Input Validate)
+	Parse XML file
+	Query user for Excel file (Input Validate)
+	Loop through Excel file and when a column name on row 1 equals a tag contained in XML data repeatedly drop down rows until empty row is found and input value inside of tag
