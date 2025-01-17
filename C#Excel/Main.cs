@@ -10,7 +10,7 @@ namespace C_Excel
     {
         static void Main(string[] args)
         {
-            XDocument xmlInput = XmlMedian.xmlParser();
+            XDocument xmlInput = XmlMedian.XmlParser();
             string excelOutput = ExcelMedian.Finder();
             ExcelMedian.Writer(xmlInput, excelOutput);
         }

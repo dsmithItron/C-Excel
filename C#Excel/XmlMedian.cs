@@ -10,7 +10,7 @@ namespace C_Excel
 {
     public class XmlMedian
     {
-        public static XDocument xmlParser()
+        public static XDocument XmlParser()
         {
             Console.WriteLine("Input Path to XML File");
             string xmlInputPath = Console.ReadLine();

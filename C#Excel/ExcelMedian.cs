@@ -14,46 +14,17 @@ namespace C_Excel
             Console.WriteLine("Input Excel File");
 
             string filePath = Console.ReadLine();
-            while ( (!File.Exists(filePath)) || (filePath.ToLower() == "stop") || (Path.GetExtension(filePath) != ".xlsx" )){
+            while ((!File.Exists(filePath)) || (filePath.ToLower() == "stop") || (Path.GetExtension(filePath) != ".xlsx"))
+            {
                 Console.WriteLine("File cannot be found or file is not an Excel file.\n Input new filepath or \"stop\" \n");
                 filePath = Console.ReadLine();
             }
-  
+
             return filePath;
         }
 
         public static void Writer(XDocument xmlInput, string excelPath)
         {
-
-            SpreadsheetDocument excelOutput = SpreadsheetDocument.Open(excelPath, true);
-
-
-            // Open Excel Spreadsheet from Path and echo content
-            using (SpreadsheetDocument doc = SpreadsheetDocument.Open(excelPath, false))
-            {
-                WorkbookPart workbookPart = doc.WorkbookPart;
-                Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(sheet => sheet.Name == "Global");
-                // need case here for Spreadsheet not having a Global sheet in which case sheet will equal null
-                WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
-                SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
-
-                if (!sheetData.Elements<Row>().Any())
-                {
-                    Console.WriteLine("Current Excel file is empty");
-                }
-                else
-                {
-                    Console.WriteLine("This is the current content of your file:");
-                    foreach (Row row in sheetData.Elements<Row>())
-                    {
-                        foreach (Cell cell in row.Elements<Cell>())
-                        {
-                            Console.Write(cell.CellValue.Text + "\t");
-                        }
-                    }
-                }
-            }
-
             using (SpreadsheetDocument doc = SpreadsheetDocument.Open(excelPath, true))
             {
                 WorkbookPart workbookPart = doc.WorkbookPart;
@@ -71,6 +42,7 @@ namespace C_Excel
                 {
                     string cellValue = ExcelMedian.GetCellValue(doc, celldata);
 
+                    // If a CellValue == An XML tag name
                     if (XmlMedian.FindTag(cellValue, xmlInput))
                     {
                         string xmlTagValue = XmlMedian.GetTagValue(cellValue, xmlInput);
@@ -82,12 +54,12 @@ namespace C_Excel
                                 // Stop processing once an empty cell is found
                                 break;
                             }
-                            InsertValueIntoXmlTag(row, xmlTagName);
+                            if(InsertInCell());
                         }
                     }
 
                 }
-                
+
             }
 
 
@@ -97,7 +69,7 @@ namespace C_Excel
         {
             string value = string.Empty;
 
-            // If the cell is a shared string, get the value from the shared strings table
+
             if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
             {
                 // Extract the index of the shared string
@@ -105,14 +77,10 @@ namespace C_Excel
 
                 // Get the shared string table part
                 SharedStringTablePart sharedStringTablePart = doc.WorkbookPart.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-
-                if (sharedStringTablePart != null)
-                {
-                    // Get the actual shared string value using the index
-                    value = sharedStringTablePart.SharedStringTable.ElementAt(index).InnerText;
-                }
+                // Get the actual shared string value using the index
+                value = sharedStringTablePart.SharedStringTable.ElementAt(index).InnerText;
             }
-            // If the cell contains a raw value (e.g., a number, date, etc.)
+
             else if (cell.CellValue != null)
             {
                 value = cell.CellValue.Text;
@@ -202,5 +170,12 @@ namespace C_Excel
 
         }
         */
+
+        // does this need overload for different inserts?
+        // Maybe just give it the whole xml and let it figure it out?
+        static bool InsertInCell(int CellRef, string insertValue)
+        {
+            return false;
+        }
     }
 }
