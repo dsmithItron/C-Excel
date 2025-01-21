@@ -15,7 +15,15 @@
 
 
 
-			using System;
+Cell theCell = wsPart.Worksheet.Descendants<Cell>().
+                  Where(c => c.CellReference == addressName).FirstOrDefault();
+
+
+
+
+
+using System;
+using System.Numerics;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -29,7 +37,48 @@ namespace Test
         static void Main(string[] args)
         {
             TestXml();
-            TestExcel();
+            //TestExcel();
+            /* Test splitCellRef()
+            string test1 = "A1", test2 = "AA2", test3 = "AR3", test4 = "A34", test5 = "AR35", test6 = "";
+            List<string> test1Sub = splitCellRef(test1);
+            Console.WriteLine("Test1: " + test1 + " test1Sub[0]: " + test1Sub[0] + " test1Sub[1]: " + test1Sub[1]);
+            List<string> test2Sub = splitCellRef(test2);
+            Console.WriteLine("Test2: " + test2 + " test2Sub[0]: " + test2Sub[0] + " test2Sub[1]: " + test2Sub[1]);
+            List<string> test3Sub = splitCellRef(test3);
+            Console.WriteLine("Test3: " + test3 + " test3Sub[0]: " + test3Sub[0] + " test3Sub[1]: " + test3Sub[1]);
+            List<string> test4Sub = splitCellRef(test4);
+            Console.WriteLine("Test4: " + test4 + " test4Sub[0]: " + test4Sub[0] + " test4Sub[1]: " + test4Sub[1]);
+            List<string> test5Sub = splitCellRef(test5);
+            Console.WriteLine("Test5: " + test5 + " test5Sub[0]: " + test5Sub[0] + " test5Sub[1]: " + test5Sub[1]);
+            List<string> test6Sub = splitCellRef(test6);
+            Console.WriteLine("Test6: " + test6 + " test6Sub[0]: " + test6Sub[0] + " test6Sub[1]: " + test6Sub[1]);
+            */
+
+        }
+
+        static List<string> splitCellRef(string inputString)
+        {
+            List<string> subStrings = new List<string>();
+            int dividePoint = 0;
+
+            foreach (char c in inputString)
+            {
+                if (!char.IsDigit(c))
+                {
+                    dividePoint++;
+                }
+                else
+                {
+                    break; // Stop once we encounter a non-digit character
+                }
+            }
+
+
+            subStrings.Add(inputString.Substring(0, dividePoint));
+            subStrings.Add(inputString.Substring(dividePoint));
+
+
+            return subStrings;
         }
 
         static void TestXml()
@@ -60,15 +109,54 @@ namespace Test
         static void TestExcel()
         {
             Console.WriteLine("Entering TestExcel:\n");
-            string excelPath = "C:\\Users\\dersmith\\Documents\\Copy_Of_RequestForm_Mapping.xlsx";
+            string excelPath = "C:\\Users\\dersmith\\Documents\\Test_Copy_Of_RequestForm_Mapping.xlsx";
 
             // Open Excel Spreadsheet from Path and echo content
-            using (SpreadsheetDocument doc = SpreadsheetDocument.Open(excelPath, false))
+            using (SpreadsheetDocument doc = SpreadsheetDocument.Open(excelPath, true))
             {
                 WorkbookPart workbookPart = doc.WorkbookPart;
                 Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(sheet => sheet.Name == "GLOBAL");
                 WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
                 SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
+
+                Row rowData = sheetData.Elements<Row>().ElementAt(0);
+                Cell cellData = rowData.Elements<Cell>().ElementAt(0);
+                string cellValue = "empty";
+                string cellRef, prevCellRef;
+                string column;
+                int row = 0;
+
+
+                cellRef = cellData.CellReference;
+                column = splitCellRef(cellRef)[0];
+                row = Int32.Parse(splitCellRef(cellRef)[1]) - 1;
+                cellData = worksheetPart.Worksheet.Descendants<Cell>().Where(c => c.CellReference == cellRef).FirstOrDefault();
+                while (cellValue != "")
+                {
+                    row++;
+                    cellRef = column + row;
+                    cellData = worksheetPart.Worksheet.Descendants<Cell>().Where(c => c.CellReference == cellRef).FirstOrDefault();
+                    if (cellData == null || (GetCellValue(doc, cellData) == null))
+                    {
+                        cellValue = "";
+                    }
+                    else
+                    {
+                        cellValue = GetCellValue(doc, cellData);
+                    }
+                    Console.WriteLine("CellRef: " + cellRef + " Cell Value = " + cellValue);
+                }
+                uint uRow = Convert.ToUInt32(row);
+
+                
+                Cell insertCell = InsertCellInWorksheet(doc, column, uRow);
+                insertCell.CellValue = new CellValue("Inserted");
+                insertCell.DataType = new EnumValue<CellValues>(CellValues.String);
+                Console.WriteLine("InsertCell value: " + GetCellValue(doc, insertCell));
+                Console.WriteLine("InsertCell reference: " + insertCell.CellReference);
+                
+
+                
 
                 /*
                 int rowIndex = 1;
@@ -81,16 +169,14 @@ namespace Test
                     Console.Write(cellValue + "\n");
                 }
                 */
-                Row rowData = sheetData.Elements<Row>().ElementAt(0);
-                Cell cellData = rowData.Elements<Cell>().ElementAt(0);
-                string cellValue = string.Empty;
-                string cellRef;
+                /*
                 // Drop rows until we encounter an empty cell
                 for (int row = 0; row < 15; row++)
                 {
                     rowData = sheetData.Elements<Row>().ElementAt(row);
                     cellData = rowData.Elements<Cell>().ElementAt(0);
                     cellRef = cellData.CellReference;
+                        prevCellRef = cellData.CellReference;
                     if (cellData == null)
                     {
                         Console.WriteLine("No cells found in this row");
@@ -111,6 +197,7 @@ namespace Test
                     }
                     Console.WriteLine("Row (" + row + ")Cell reference " + cellData.CellReference + " Cell value: " + cellValue);
                 }
+                */
                 if (doc.CanSave)
                 {
                     doc.Save();
@@ -146,6 +233,149 @@ namespace Test
 
             return value;
         }
+
+        static Cell InsertCellInWorksheet(SpreadsheetDocument doc, string columnName, uint rowIndex)
+        {
+            WorkbookPart workbookPart = doc.WorkbookPart;
+            Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(sheet => sheet.Name == "GLOBAL");
+            WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+            SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
+            string cellReference = columnName + rowIndex;
+
+            // If the worksheet does not contain a row with the specified row index, insert one.
+            Row row;
+
+            if (sheetData?.Elements<Row>().Where(r => r.RowIndex is not null && r.RowIndex == rowIndex).Count() != 0)
+            {
+                row = sheetData!.Elements<Row>().Where(r => r.RowIndex is not null && r.RowIndex == rowIndex).First();
+            }
+            else
+            {
+                row = new Row() { RowIndex = rowIndex };
+                sheetData.Append(row);
+            }
+
+            // If there is not a cell with the specified column name, insert one.  
+            if (row.Elements<Cell>().Where(c => c.CellReference is not null && c.CellReference.Value == columnName + rowIndex).Count() > 0)
+            {
+                return row.Elements<Cell>().Where(c => c.CellReference is not null && c.CellReference.Value == cellReference).First();
+            }
+            else
+            {
+                // Cells must be in sequential order according to CellReference. Determine where to insert the new cell.
+                Cell? refCell = null;
+
+                foreach (Cell cell in row.Elements<Cell>())
+                {
+                    if (string.Compare(cell.CellReference?.Value, cellReference, true) > 0)
+                    {
+                        refCell = cell;
+                        break;
+                    }
+                }
+
+                Cell newCell = new Cell() { CellReference = cellReference };
+                row.InsertBefore(newCell, refCell);
+
+                return newCell;
+            }
+        }
+        // Given text and a SharedStringTablePart, creates a SharedStringItem with the specified text 
+        // and inserts it into the SharedStringTablePart. If the item already exists, returns its index.
+        
     }
+
+    /*
+        // Retrieve the value of a cell, given a file name, sheet name, 
+    // and address name.
+    public static string GetCellValue(string fileName,
+        string sheetName,
+        string addressName)
+            {
+
+                    // Use its Worksheet property to get a reference to the cell 
+                    // whose address matches the address you supplied.
+                    Cell theCell = wsPart.Worksheet.Descendants<Cell>().
+                      Where(c => c.CellReference == addressName).FirstOrDefault();
+
+                    // If the cell does not exist, return an empty string.
+                    if (theCell != null)
+                    {
+                        value = theCell.InnerText;
+
+                        // If the cell represents an integer number, you are done. 
+                        // For dates, this code returns the serialized value that 
+                        // represents the date. The code handles strings and 
+                        // Booleans individually. For shared strings, the code 
+                        // looks up the corresponding value in the shared string 
+                        // table. For Booleans, the code converts the value into 
+                        // the words TRUE or FALSE.
+                        if (theCell.DataType != null)
+                        {
+                            switch (theCell.DataType.Value)
+                            {
+                                case CellValues.SharedString:
+
+                                    // For shared strings, look up the value in the
+                                    // shared strings table.
+                                    var stringTable =
+                                        wbPart.GetPartsOfType<SharedStringTablePart>()
+                                        .FirstOrDefault();
+
+                                    // If the shared string table is missing, something 
+                                    // is wrong. Return the index that is in
+                                    // the cell. Otherwise, look up the correct text in 
+                                    // the table.
+                                    if (stringTable != null)
+                                    {
+                                        value =
+                                            stringTable.SharedStringTable
+                                            .ElementAt(int.Parse(value)).InnerText;
+                                    }
+                                    break;
+
+                                case CellValues.Boolean:
+                                    switch (value)
+                                    {
+                                        case "0":
+                                            value = "FALSE";
+                                            break;
+                                        default:
+                                            value = "TRUE";
+                                            break;
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+                }
+                return value;
+            }
+
+            /*
+            const string fileName = 
+                @"C:\users\public\documents\RetrieveCellValue.xlsx";
+            // Retrieve the value in cell A1.
+            string value = GetCellValue(fileName, "Sheet1", "A1");
+            Console.WriteLine(value);
+            // Retrieve the date value in cell A2.
+            value = GetCellValue(fileName, "Sheet1", "A2");
+            Console.WriteLine(
+                DateTime.FromOADate(double.Parse(value)).ToShortDateString()); 
+
+            */
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -7,65 +7,40 @@ using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace C_Excel
 {
+    /**
+     * @author Derek Smith
+     * 
+     */
     class ExcelMedian
     {
+        /// <summary>
+        /// Requests a filepath from a user. Validates the filepath until it leads to a Excel Spreadsheet file.
+        /// </summary>
+        /// <returns> A string representing a path to an Excel Spreadsheet.</returns>
         public static string Finder()
         {
-            Console.WriteLine("Input Excel File");
+            Console.WriteLine("Input path to Excel File");
 
             string filePath = Console.ReadLine();
-            while ((!File.Exists(filePath)) || (filePath.ToLower() == "stop") || (Path.GetExtension(filePath) != ".xlsx"))
+            // Continue prompting for file if the file does not exist or the file is not an Excel spreadsheet
+            while ((!File.Exists(filePath)) || (Path.GetExtension(filePath) != ".xlsx"))
             {
-                Console.WriteLine("File cannot be found or file is not an Excel file.\n Input new filepath or \"stop\" \n");
+                Console.WriteLine("File cannot be found or file is not an Excel file.\n Input new filepath: ");
                 filePath = Console.ReadLine();
             }
 
             return filePath;
         }
 
-        public static void Writer(XDocument xmlInput, string excelPath)
-        {
-            using (SpreadsheetDocument doc = SpreadsheetDocument.Open(excelPath, true))
-            {
-                WorkbookPart workbookPart = doc.WorkbookPart;
-                Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(sheet => sheet.Name == "Global");
-                WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
-                SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
-
-
-                // for each cell in the first row
-                // if cell value == any tag name in XML 
-                // drop rows till cell value is empty
-                // input value in XML tag
-                Row firstRow = sheetData.Elements<Row>().ElementAtOrDefault(0);
-                foreach (Cell celldata in firstRow)
-                {
-                    string cellValue = ExcelMedian.GetCellValue(doc, celldata);
-
-                    // If a CellValue == An XML tag name
-                    if (XmlMedian.FindTag(cellValue, xmlInput))
-                    {
-                        string xmlTagValue = XmlMedian.GetTagValue(cellValue, xmlInput);
-                        // Drop rows until we encounter an empty cell
-                        foreach (Row row in sheetData.Elements<Row>())
-                        {
-                            if (row.Elements<Cell>().Any(c => GetCellValue(doc, celldata) == ""))
-                            {
-                                // Stop processing once an empty cell is found
-                                break;
-                            }
-                            if(InsertInCell());
-                        }
-                    }
-
-                }
-
-            }
-
-
-        }
-
-        static string GetCellValue(SpreadsheetDocument doc, Cell cell)
+        /// <summary>
+        /// Uses a spreadsheet document and cell attached to that document to obtain the value of the cell.
+        /// <para>Verifies that the cell exists and if the cell is a Shared String pulls the cell's value from the Shared Table.</para>
+        /// <para>Returns a string representing the cell's value.</para>
+        /// </summary>
+        /// <param name="doc"> SpreadsheetDocument variable representing an open Spreadsheet that is being viewed.</param>
+        /// <param name="cell"> Cell variable that represents a cell in the spreadsheet.</param>
+        /// <returns>Returns a string representing the cell's value.</returns>
+        public static string GetCellValue(SpreadsheetDocument doc, Cell cell)
         {
             string value = string.Empty;
 
@@ -88,94 +63,153 @@ namespace C_Excel
 
             return value;
         }
-        /*
-        public static void Median()
+
+        /// <summary>
+        /// Uses a SpreadsheetDocument and cell reference to insert a value into a specific cell.
+        /// </summary>
+        /// <param name="doc">SpreadsheetDocument variable representing an open Spreadsheet that is being edited.</param>
+        /// <param name="cellRef">string representing a cell reference. Format Ex. = (A3, B4, BB4, A44)</param>
+        /// <param name="insertValue">string representing text that will be inserted into a cell.</param>
+        /// <returns>bool with true representing a successful insert with false representing the opposite.</returns>
+        public static bool InsertInCell(SpreadsheetDocument doc, string cellRef, string insertValue)
         {
-            Console.WriteLine("Input Excel File");
+            string column = SplitCellRef(cellRef)[0];
+            // converts Row value from int to uint in order to use Microsoft function (InsertCellInWorksheet)
+            uint uRow = Convert.ToUInt32(SplitCellRef(cellRef)[1]);
 
-            string filePath = Console.ReadLine();
-            if (filePath == string.Empty) { filePath = "sample.xlsx"; }
-            if (!File.Exists(filePath))
+
+            Cell insertCell = InsertCellInWorksheet(doc, column, uRow);
+            insertCell.CellValue = new CellValue(insertValue);
+            insertCell.DataType = new EnumValue<CellValues>(CellValues.String);
+            if (GetCellValue(doc, insertCell) == insertValue)
             {
-                using (SpreadsheetDocument doc = SpreadsheetDocument.Create(filePath, SpreadsheetDocumentType.Workbook))
-                {
-                    WorkbookPart workbookPart = doc.AddWorkbookPart();
-                    workbookPart.Workbook = new Workbook();
-                    WorksheetPart worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-                    worksheetPart.Worksheet = new Worksheet(new SheetData());
-                    Sheets sheets = doc.WorkbookPart.Workbook.AppendChild(new Sheets());
-                    Sheet sheet = new Sheet() {
-                        Id = doc.WorkbookPart.GetIdOfPart(worksheetPart), 
-                        SheetId = 1, 
-                        Name = "Sheet1" 
-                    };
-                    sheets.Append(sheet);
-                    workbookPart.Workbook.Save();
-                }
+                return true;
             }
+            return false;
+        }
 
-            using (SpreadsheetDocument doc = SpreadsheetDocument.Open(filePath, false))
+        /// <summary>
+        /// Goes down 1 row at a time from starting cell until empty cell is found.
+        /// </summary>
+        /// <param name="doc">SpreadsheetDocument variable representing an open Spreadsheet that is being viewed.</param>
+        /// <param name="cellData">Cell variable representing the cell</param>
+        /// <param name="worksheetPart"></param>
+        /// <returns>String representing a reference to an empty cell. Format Ex. = (A3, B4, BB4, A44)</returns>
+        public static string FindEmptyCellRef(SpreadsheetDocument doc, string cellRef, WorksheetPart worksheetPart)
+        {
+            string cellValue = "empty";
+            
+            // obtains column portion of cellRef
+            string column = SplitCellRef(cellRef)[0];
+            // obtains row portion of cellRef and subtracts to deal with initial addition in loop
+            int row = Int32.Parse(SplitCellRef(cellRef)[1]) - 1;
+
+            // obtains Cell where cellReference = cellRef
+            Cell cellData = worksheetPart.Worksheet.Descendants<Cell>().Where(c => c.CellReference == cellRef).FirstOrDefault();
+
+            while (cellValue != "")
             {
-                WorkbookPart workbookPart = doc.WorkbookPart;
-                Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().First();
-                WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
-                SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
-
-                if (!sheetData.Elements<Row>().Any())
+                row++;
+                // CellRef is pushed down a row
+                cellRef = column + row;
+                cellData = worksheetPart.Worksheet.Descendants<Cell>().Where(c => c.CellReference == cellRef).FirstOrDefault();
+                // solving for the cell not existing
+                if (cellData == null || (GetCellValue(doc, cellData) == null))
                 {
-                    Console.WriteLine("Current Excel file is empty");
+                    cellValue = "";
                 }
                 else
                 {
-                    Console.WriteLine("This is the current content of your file:");
-                    foreach (Row row in sheetData.Elements<Row>())
-                    {
-                        foreach (Cell cell in row.Elements<Cell>())
-                        {
-                            Console.Write(cell.CellValue.Text + "\t");
-                        }
-                    }
+                    cellValue = GetCellValue(doc, cellData);
                 }
             }
 
-            Console.WriteLine("\nWould you like to add a new row? (y/n)");
-            string response = Console.ReadLine();
-
-            if(response.ToLower() == "y")
-            {
-                Console.WriteLine("Enter data seperated by commas");
-                string[] rowData = Console.ReadLine().Split(',');
-
-                using (SpreadsheetDocument doc = SpreadsheetDocument.Open(filePath, true))
-                {
-                    WorkbookPart workbookPart = doc.WorkbookPart;
-                    Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().First();
-                    WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
-                    SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
-
-                    Row newRow = new Row();
-                    foreach (string cellData in rowData)
-                    {
-                        Cell cell = new Cell()
-                        {
-                            DataType = CellValues.String,
-                            CellValue = new CellValue(cellData)
-                        };
-                        newRow.Append(cell);
-                    }
-                    sheetData.Append(newRow);
-                }
-
-            }
-
+            return cellRef;
         }
-        */
 
-        // does this need overload for different inserts?
-        // Maybe just give it the whole xml and let it figure it out?
-        static bool InsertInCell(int CellRef, string insertValue)
+        /// <summary>
+        /// Splits CellRef into two substrings containing the column and row of a cell.
+        /// </summary>
+        /// <param name="inputString">string representing a cell reference.</param>
+        /// <returns> List containing the cell column at index 0 and the cell row at index 1.</returns>
+        public static List<string> SplitCellRef(string inputString)
         {
-            return false;
+            List<string> subStrings = [];
+            int dividePoint = 0;
+
+            foreach (char c in inputString)
+            {
+                // if current character is not a digit
+                if (!char.IsDigit(c))
+                {
+                    dividePoint++;
+                }
+                else
+                {
+                    break; // Stop once we encounter a non-digit character
+                }
+            }
+
+            // Adding column substring
+            subStrings.Add(inputString.Substring(0, dividePoint));
+            // Adding row substring
+            subStrings.Add(inputString.Substring(dividePoint));
+
+
+            return subStrings;
+        }
+        /// <summary>
+        /// Given a column name, a row index, and a WorksheetPart, inserts a cell into the worksheet. 
+        /// </summary>
+        /// <param name="doc"></param>
+        /// <param name="columnName"></param>
+        /// <param name="rowIndex"></param>
+        /// <returns>Returns the cell if it already exists</returns>
+        public static Cell InsertCellInWorksheet(SpreadsheetDocument doc, string columnName, uint rowIndex)
+        {
+            WorkbookPart workbookPart = doc.WorkbookPart;
+            Sheet sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault(sheet => sheet.Name == "GLOBAL");
+            WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+            SheetData sheetData = worksheetPart.Worksheet.Elements<SheetData>().First();
+            string cellReference = columnName + rowIndex;
+
+            // If the worksheet does not contain a row with the specified row index, insert one.
+            Row row;
+
+            if (sheetData?.Elements<Row>().Where(r => r.RowIndex is not null && r.RowIndex == rowIndex).Count() != 0)
+            {
+                row = sheetData!.Elements<Row>().Where(r => r.RowIndex is not null && r.RowIndex == rowIndex).First();
+            }
+            else
+            {
+                row = new Row() { RowIndex = rowIndex };
+                sheetData.Append(row);
+            }
+
+            // If there is not a cell with the specified column name, insert one.  
+            if (row.Elements<Cell>().Where(c => c.CellReference is not null && c.CellReference.Value == columnName + rowIndex).Count() > 0)
+            {
+                return row.Elements<Cell>().Where(c => c.CellReference is not null && c.CellReference.Value == cellReference).First();
+            }
+            else
+            {
+                // Cells must be in sequential order according to CellReference. Determine where to insert the new cell.
+                Cell? refCell = null;
+
+                foreach (Cell cell in row.Elements<Cell>())
+                {
+                    if (string.Compare(cell.CellReference?.Value, cellReference, true) > 0)
+                    {
+                        refCell = cell;
+                        break;
+                    }
+                }
+
+                Cell newCell = new Cell() { CellReference = cellReference };
+                row.InsertBefore(newCell, refCell);
+
+                return newCell;
+            }
         }
     }
 }
